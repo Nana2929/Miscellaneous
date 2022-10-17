@@ -1,4 +1,6 @@
 #%%
+# (n-1) sample variance; for population variance use pvariance
+from statistics import variance, mean
 import time
 import gurobipy as gbp  # Python3.8.12
 import numpy as np
@@ -8,7 +10,6 @@ from typing import Final, List, Tuple
 
 D: Final[Tuple[int]] = (2.5, 3, 20)
 RATES: Final[Tuple[int]] = (0.8, 1, 1.2)
-#%%
 
 
 def getY(N: int):
@@ -60,6 +61,7 @@ def solve(D: List[int]):
 solved, Xev = solve(D)
 print(f'EV Solution')
 print(solved.objval)
+Xev = [v.x for v in Xev]
 
 
 # ======== WS =========
@@ -72,6 +74,7 @@ for rate in RATES:
     print('Objective value:', model.objVal)
     for v in model.getVars():
         print(f'{v.varName} = {v.x}')
+
 # ====================== c ========================
 # Defining model of RP problem
 
@@ -83,8 +86,6 @@ def trans(w):
         return '_medium_'
     else:
         return '_high_'
-
-#%%
 
 
 def RPsolve(D: List[List[int]], N: int):
@@ -128,8 +129,6 @@ for v in rpmodel.getVars():
     print(f'{v.varName} = {v.x}')
 
 # ====================== e ========================
-#%%
-# Xev = [v.x for v in Xev.getVars()]
 Wsto = [[Wsto[w][i].x for i in range(4)] for w in range(3)]
 Ysto = [[Ysto[w][i].x for i in range(2)] for w in range(3)]
 
@@ -142,16 +141,15 @@ def getEEV(X: List[int], N: int,
     return -150*X[0] - 230*X[1] - 260*X[2] +\
         1/N * sum(170*Wsto[w][0] - 238 * Ysto[w][0] + 150*Wsto[w][1] - 210 *
                   Ysto[w][1] + 36*Wsto[w][2] + 10*Wsto[w][3] for w in range(N))
+
+
 # For maximization problem:
-
-
-EVPI = RPObj - sum(WSobj.values())/len(WSobj)
+EVPI = sum(WSobj.values())/len(WSobj) - RPObj
 VSS = RPObj - getEEV(Xev, N=3, Wsto=Wsto, Ysto=Ysto)
 print(f'EVPI: {EVPI}')
 print(f'VSS: {VSS}')
 
 
-# %%
 # ======================= g ======================
 def SPN(N: int, Ds: List[List[int]]):
     model = gbp.Model('agri-spn')
@@ -186,8 +184,7 @@ def SPN(N: int, Ds: List[List[int]]):
     return model, X
 
 
-spnmodel = SPN(N=3, Ds=getY(N=30))
-# %%
+# spnmodel = SPN(N=3, Ds=getY(N=30))
 
 
 def XDgetObj(X, D):
@@ -228,3 +225,22 @@ for m in range(M):
         # each w is a realized yields of 3 crops
         UpperBoundCurr += XDgetObj(spnX, w)
     UpperBoundDistr.append(UpperBoundCurr/len(batchW))
+
+Lnm = mean(LowerBoundDistr)
+Slm = variance(LowerBoundDistr, xbar=Lnm)
+# By table lookup, z\alpha/2 = 1.96 if \alpha = 0.05
+# Calculate margin of error (half-width)
+za2 = 1.96
+MoE_l = za2 * (Slm/len(LowerBoundDistr))**0.5
+print(f'Lower Bound CI:[{Lnm} - {MoE_l},{Lnm} + {MoE_l}]')
+
+Unt = mean(UpperBoundDistr)
+Su = variance(UpperBoundDistr, xbar=Unt)
+MoE_u = za2 * (Su/len(UpperBoundDistr))**0.5
+print(f'Upper Bound CI:[{Unt} - {MoE_u},{Unt} + {MoE_u}]')
+
+# Lower Bound CI:[1133049.9786766106 - 15773.725592053115,1133049.9786766106 + 15773.725592053115]
+# Upper Bound CI:[132383.22659538672 - 2832.4989481191024,132383.22659538672 + 2832.4989481191024]
+
+
+# %%
